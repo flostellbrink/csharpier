@@ -152,6 +152,11 @@ internal static class InvocationExpression
             return oneLine;
         }
 
+        var singleTrailingMethod =
+            printedNodes.Count(node => node.Node is InvocationExpressionSyntax) == 1
+            && printedNodes.Last().Node is InvocationExpressionSyntax;
+        isChain = !singleTrailingMethod;
+
         var index = 0;
 
         bool IsBase(CSharpSyntaxNode node) =>
@@ -216,14 +221,43 @@ internal static class InvocationExpression
         // Keeps track of whether the first node has been folded into the first group
         var foldFirstNodeIntoNextGroup = shouldFoldFirstNode;
 
-        var outerNodes = ParseOuter();
+        var outerNodes = new List<Doc>();
+        if (singleTrailingMethod)
+        {
+            // Here we want [[a\n].b\n.c]()
+            var innerNodes = new List<Doc>();
+            while (index < printedNodes.Count - 1)
+            {
+                var membersGroup =
+                    ParseMembersGroup()
+                    ?? throw new Exception($"Unexpected node {printedNodes[index].Node.GetType()}");
+                innerNodes.Add(membersGroup);
+                continue;
+            }
 
-        // FIXME: Indents should happen inside parse invocation/members
+            var trailingInvocation = Doc.Concat(
+                printedNodes.Skip(index).Select(node => node.Doc).ToList()
+            );
+
+            outerNodes.Add(Doc.Group(innerNodes));
+            outerNodes.Add(Doc.Concat(trailingInvocation));
+        }
+        else
+        {
+            while (index < printedNodes.Count)
+            {
+                var invocationGroup =
+                    ParseInvocationsGroup()
+                    ?? throw new Exception($"Unexpected node {printedNodes[index].Node.GetType()}");
+                outerNodes.Add(invocationGroup);
+                continue;
+            }
+        }
 
         Doc expanded = firstNode switch
         {
             null => Doc.Group(Doc.Concat(outerNodes)),
-            _ => Doc.Group(firstNode!, Doc.Indent(outerNodes))
+            _ => Doc.Group(firstNode!, Doc.Concat(outerNodes))
         };
 
         return firstNodeHasBreak switch
@@ -231,24 +265,6 @@ internal static class InvocationExpression
             true => expanded,
             false => Doc.ConditionalGroup(oneLine, expanded)
         };
-
-        List<Doc> ParseOuter()
-        {
-            var nodes = new List<Doc>();
-            while (index < printedNodes.Count)
-            {
-                var middle = ParseInvocationsGroup();
-                if (middle == null)
-                {
-                    throw new Exception($"Unexpected node {printedNodes[index].Node.GetType()}");
-                }
-
-                nodes.Add(middle);
-                continue;
-            }
-
-            return nodes;
-        }
 
         Doc? ParseInvocationsGroup()
         {
@@ -267,8 +283,12 @@ internal static class InvocationExpression
                     }
                     else
                     {
-                        nodes.Add(firstNodeHasBreak || isChain ? Doc.HardLine : Doc.SoftLine);
-                        nodes.Add(invocation.Value.invocation);
+                        nodes.Add(
+                            Doc.Indent(
+                                firstNodeHasBreak || isChain ? Doc.HardLine : Doc.SoftLine,
+                                invocation.Value.invocation
+                            )
+                        );
                     }
                     index = invocation.Value.index;
                     continue;
@@ -309,8 +329,12 @@ internal static class InvocationExpression
                     }
                     else
                     {
-                        nodes.Add(Doc.SoftLine);
-                        nodes.Add(memberAccess.Value.member);
+                        nodes.Add(
+                            Doc.Indent(
+                                firstNodeHasBreak || isChain ? Doc.HardLine : Doc.SoftLine,
+                                memberAccess.Value.member
+                            )
+                        );
                     }
                     index = memberAccess.Value.index;
 
