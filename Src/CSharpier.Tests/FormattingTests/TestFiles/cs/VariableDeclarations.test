@@ -76,9 +76,8 @@ class ClassName
                 + SqlParameterCollectionExtensions.DefaultValueColumnWidth
         ];
 
-        var someLongValue_________________ = memberAccessExpression[
-            elementAccessExpression
-        ].theMember______________________________;
+        var someLongValue_________________ = memberAccessExpression[elementAccessExpression]
+            .theMember______________________________;
 
         var someLongValue_________________ = memberAccessExpression[elementAccessExpression]
             .theMember______________________________();
