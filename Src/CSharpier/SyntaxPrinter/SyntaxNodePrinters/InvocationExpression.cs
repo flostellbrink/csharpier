@@ -208,9 +208,16 @@ internal static class InvocationExpression
         var firstNodeHasBreak = firstNode != null && DocUtilities.ContainsBreak(firstNode);
 
         // Fold first node into the first group if it's short
-        var shouldFoldFirstNode =
+        // Aggressively fold first node into following method
+        var shouldFoldFirstNodeIntoMember =
             shouldSeparateFirstNode
             && !firstNodeHasBreak
+            && firstNode != null
+            && firstNode.Print().Length < 40;
+
+        // Fold first node into following invocation if it's short
+        var shouldFoldFirstNodeIntoInvocation =
+            shouldFoldFirstNodeIntoMember
             && index == 1
             && printedNodes[0].Node
                 is IdentifierNameSyntax { Identifier.Text.Length: <= 4 }
@@ -219,7 +226,7 @@ internal static class InvocationExpression
                     or BaseExpressionSyntax;
 
         // Keeps track of whether the first node has been folded into the first group
-        var foldFirstNodeIntoNextGroup = shouldFoldFirstNode;
+        var foldFirstNodeIntoNextGroup = shouldFoldFirstNodeIntoMember;
 
         var outerNodes = new List<Doc>();
         if (singleTrailingMethod)
@@ -275,10 +282,9 @@ internal static class InvocationExpression
                 var invocation = PeekInvocation(index);
                 if (invocation != null)
                 {
-                    if (foldFirstNodeIntoNextGroup)
+                    if (foldFirstNodeIntoNextGroup && shouldFoldFirstNodeIntoInvocation)
                     {
                         firstNode = Doc.Group(firstNode!, invocation.Value.invocation);
-                        foldFirstNodeIntoNextGroup = false;
                         nodes.Add(Doc.Null);
                     }
                     else
@@ -290,6 +296,12 @@ internal static class InvocationExpression
                             )
                         );
                     }
+
+                    if (foldFirstNodeIntoNextGroup)
+                    {
+                        foldFirstNodeIntoNextGroup = false;
+                    }
+
                     index = invocation.Value.index;
                     continue;
                 }
@@ -321,10 +333,9 @@ internal static class InvocationExpression
                 var memberAccess = PeekMemberAccess(index);
                 if (memberAccess != null)
                 {
-                    if (foldFirstNodeIntoNextGroup)
+                    if (foldFirstNodeIntoNextGroup && shouldFoldFirstNodeIntoMember)
                     {
                         firstNode = Doc.Group(firstNode!, memberAccess.Value.member);
-                        foldFirstNodeIntoNextGroup = false;
                         nodes.Add(Doc.Null);
                     }
                     else
@@ -336,8 +347,13 @@ internal static class InvocationExpression
                             )
                         );
                     }
-                    index = memberAccess.Value.index;
 
+                    if (foldFirstNodeIntoNextGroup)
+                    {
+                        foldFirstNodeIntoNextGroup = false;
+                    }
+
+                    index = memberAccess.Value.index;
                     if (index < printedNodes.Count && PeekInvocation(index) == null)
                     {
                         continue;
